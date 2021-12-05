@@ -137,6 +137,11 @@ bootstrap_results %>%
        x = "Adjusted R-squared")
 ```
 
+The distribution of adjusted R-squared is approximately normal with a non-obvious tail extending to low values.
+
+
+
+
 ```{r}
 bootstrap_results2 <- 
   boot_straps %>% 
@@ -152,7 +157,7 @@ log_product<-
   pivot_wider(names_from = term, values_from = estimate)%>%
   unnest()%>%
   janitor::clean_names()%>%
-  mutate(log_product = intercept*tmin)%>%
+  mutate(log_product = log(intercept*tmin))%>%
   select(log_product)
   
 log_product%>%
@@ -168,5 +173,6 @@ log_product %>%
        x = "Log(Beta0*Beta1)")
 ```
 
+The distribution of log(beta0*beta1) is approxiamtely normal.
 
 
