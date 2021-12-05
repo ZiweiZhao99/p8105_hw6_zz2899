@@ -15,7 +15,7 @@ set.seed(1)
 # Problem 1
 
 ### Build a model
-Considering baby's birth weight as a outcome might depend on mother's age, smoking status, gestational age, and weight at delivery.
+Considering baby's birth weight as a outcome might depend on mother's age, baby's length and head circumference.
 
 ```{r message=FALSE}
 birthweight<- 
@@ -23,7 +23,11 @@ birthweight<-
   mutate(babysex = as.factor(babysex))%>%
   na.omit()
 
-fit1 = lm(bwt ~ momage + smoken + gaweeks + delwt, data = birthweight)
+fit1 <- lm(bwt ~ momage + blength + bhead + blength*bhead +  momage*blength +momage*bhead + momage*blength*bhead, data = birthweight)
+
+fit1%>%
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
 ```
 
 ```{r}
@@ -52,7 +56,7 @@ cv_df =
 cv_df = 
   cv_df %>% 
   mutate(
-    fit1  = map(train, ~lm(bwt ~ momage + smoken + gaweeks + delwt, data = .x)),
+    fit1  = map(train, ~lm(bwt ~ momage + blength + bhead + blength*bhead +  momage*blength +momage*bhead + momage*blength*bhead, data = .x)),
     fit2  = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
     fit3  = map(train, ~lm(bwt ~ blength + bhead + babysex + blength*bhead + bhead*babysex + blength*babysex + blength*babysex*bhead, data = .x))) %>% 
   mutate(
@@ -70,11 +74,99 @@ cv_df %>%
   mutate(model = fct_inorder(model)) %>% 
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
-According to the result of cross-validation, the RMSE for the third model (the one using head circumference, length, sex, and all interactions between these) is the smallest, indicating that this model could be better than other two models.
+According to the result of cross-validation, the RMSEs for the first and the third model are smaller than the second one, indicating that the second model might not be as good as the first and the third one.
 
 # Problem 2
 
+```{r message=FALSE}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
 
+```{r}
+fit4 <-
+  lm(tmax ~ tmin, data = weather_df) 
+
+fit4%>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities.
+
+```{r}
+boot_sample <- function(df) {
+  sample_frac(df, replace = TRUE)
+}
+
+boot_straps = 
+  tibble(
+    strap_number = 1:5000,
+    strap_sample = rerun(5000, boot_sample(weather_df))
+  )
+```
+
+```{r}
+bootstrap_results <- 
+  boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::glance)) %>% 
+  select(-strap_sample, -models) %>% 
+  unnest(results) 
+
+bootstrap_results%>%
+  summarize(
+    ci_lower = quantile(adj.r.squared, 0.025), 
+    ci_upper = quantile(adj.r.squared, 0.975))
+```
+
+```{r}
+bootstrap_results %>% 
+  ggplot(aes(x = adj.r.squared)) + geom_density() +
+  labs(title = "Distribution of Adjusted R-squared",
+       x = "Adjusted R-squared")
+```
+
+```{r}
+bootstrap_results2 <- 
+  boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap_sample, -models) %>% 
+  unnest(results)
+
+log_product<-
+  bootstrap_results2 %>% 
+  select(term, estimate)%>%
+  pivot_wider(names_from = term, values_from = estimate)%>%
+  unnest()%>%
+  janitor::clean_names()%>%
+  mutate(log_product = intercept*tmin)%>%
+  select(log_product)
+  
+log_product%>%
+  summarize(
+    ci_lower = quantile(log_product, 0.025), 
+    ci_upper = quantile(log_product, 0.975))
+```
+
+```{r}
+log_product %>% 
+  ggplot(aes(x = log_product)) + geom_density() +
+  labs(title = "Distribution of Log(Beta0*Beta1)",
+       x = "Log(Beta0*Beta1)")
+```
 
 
 
